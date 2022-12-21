@@ -1,0 +1,28 @@
+{
+	"name": "obsidian-archivebox-plugin",
+	"version": "1.0.0",
+	"description": "Archives links in Markdown files to a private ArchiveBox instance.",
+	"main": "main.js",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"version": "node version-bump.mjs && git add manifest.json versions.json"
+	},
+	"keywords": ["obsidian", "obsidian-plugin", "invariant-violation"],
+	"author": "",
+	"license": "GPL-3.0",
+	"devDependencies": {
+		"@types/node": "^18.11.17",
+		"@types/tough-cookie": "^4.0.2",
+		"@typescript-eslint/eslint-plugin": "5.29.0",
+		"@typescript-eslint/parser": "5.29.0",
+		"builtin-modules": "3.3.0",
+		"esbuild": "0.14.47",
+		"obsidian": "latest",
+		"tslib": "2.4.0",
+		"typescript": "4.7.4"
+	},
+	"dependencies": {
+		"axios": "^1.2.1"
+	}
+}

@@ -1,0 +1,11 @@
+{
+	"id": "obsidian-archivebox-plugin",
+	"name": "ArchiveBox Plugin",
+	"version": "1.0.0",
+	"minAppVersion": "1.0.0",
+	"description": "Archives links to ArchiveBox, a self-hosted archiver, upon file modification.",
+	"author": "Obsidian",
+	"authorUrl": "https://invariant.violat.io/n",
+	"fundingUrl": "https://ko-fi.com/invariant",
+	"isDesktopOnly": true
+}
