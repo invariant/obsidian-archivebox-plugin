@@ -1,7 +1,7 @@
 {
 	"name": "obsidian-archivebox-plugin",
-	"version": "1.0.0",
-	"description": "Archives links in Markdown files to a private ArchiveBox instance.",
+	"version": "1.0.1",
+	"description": "Archives links in Markdown files to a private ArchiveBox instance. Requires ArchiveBox v0.6.3+",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",

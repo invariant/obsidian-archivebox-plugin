@@ -17,9 +17,11 @@ interface ArchiveBoxPluginSettings {
 	archiveBoxPassword: string;
 	ignoreDomains: string;
 	ignoreRFC1918Addresses: boolean;
-	archivedBefore: Array<string>;
+	archivedBefore: object;
 	batchEverySec: number;
 	autoSubmitOnModify: boolean;
+  cacheURLs: boolean;
+  debugMode: boolean;
 }
 
 interface archivedStringsHash {
@@ -35,24 +37,26 @@ const DEFAULT_SETTINGS: ArchiveBoxPluginSettings = {
 	archiveBoxPassword: "",
 	ignoreDomains: "",
 	ignoreRFC1918Addresses: true,
-	archivedBefore: [],
+	archivedBefore: {},
 	batchEverySec: 10,
 	autoSubmitOnModify: false,
+  cacheURLs: true,
+  debugMode: false
 };
 
 export default class ArchiveBoxPlugin extends Plugin {
-	settings: ArchiveBoxPluginSettings;
-	archivedBefore: archivedStringsHash;
+	settings: ArchiveBoxPluginSettings = DEFAULT_SETTINGS;
+	archivedBefore: archivedStringsHash = {};
 
-	linkBatch: Array<string>;
-	lastLinkUpdate: number;
-	lastLinkSubmit: number;
+	linkBatch: Array<string> = [];
+	lastLinkUpdate: number = 0;
+	lastLinkSubmit: number = 0;
 
-	loggedIn: boolean;
+	loggedIn: boolean = false;
+	isNodeAxios: boolean = false;
+	nodeAxiosSession: string = "";
+
 	axios: AxiosInstance;
-	isNodeAxios: boolean;
-	nodeAxiosSession: string;
-
 	statusBarElement: HTMLElement;
 
 	/**
@@ -61,10 +65,6 @@ export default class ArchiveBoxPlugin extends Plugin {
 	public async onload() {
 		console.log("Loading ArchiveBox Plugin.");
 		await this.loadSettings();
-
-		this.linkBatch = [];
-		this.lastLinkSubmit = 0;
-		this.lastLinkUpdate = 0;
 
 		this.archivedBefore = {};
 		this.statusBarElement = this.addStatusBarItem();
@@ -151,6 +151,10 @@ export default class ArchiveBoxPlugin extends Plugin {
 	 * @param updateStatusBar Whether or not to update status bar with a warning.
 	 */
 	protected validateSettings(updateStatusBar: boolean = true): boolean {
+    if (this.settings.debugMode === true) {
+      console.log("Validating settings.");
+    }
+
 		// 1. Check URI.
 		try {
 			new URL(this.settings.archiveBoxURI);
@@ -158,6 +162,9 @@ export default class ArchiveBoxPlugin extends Plugin {
 			if (updateStatusBar) {
 				this.updateStatusBar("❌ Missing ArchiveBox URI.");
 			}
+      if (this.settings.debugMode === true) {
+        console.log("Settings validation failed, missing ArchiveBox URI.");
+      }
 			return false;
 		}
 
@@ -173,21 +180,30 @@ export default class ArchiveBoxPlugin extends Plugin {
 					this.updateStatusBar("❌ Missing ArchiveBox password");
 				}
 			}
+      if (this.settings.debugMode === true) {
+        console.log("Settings validation failed, missing username/password");
+      }
 			return false;
 		}
 
 		// 3. Check if basic auth is on, that a username and password is set
-		if (this.settings.ignoreRFC1918Addresses === true) {
+		if (this.settings.useBasicAuth === true) {
 			if (this.settings.basicAuthUsername === "") {
 				if (updateStatusBar) {
 					this.updateStatusBar("❌ Missing basic auth username");
 				}
+        if (this.settings.debugMode === true) {
+          console.log("Settings validation failed, basic auth enabled but no username");
+        }
 				return false;
 			}
 			if (this.settings.basicAuthPassword === "") {
 				if (updateStatusBar) {
 					this.updateStatusBar("❌ Missing basic auth password");
 				}
+        if (this.settings.debugMode === true) {
+          console.log("Settings validation failed, basic auth enabled but no password");
+        }
 				return false;
 			}
 		}
@@ -220,7 +236,7 @@ export default class ArchiveBoxPlugin extends Plugin {
 				}
 				let url = new URL(match[1]);
 				let urlhash = await this.SHA256(match[1]);
-				if (urlhash in this.archivedBefore) {
+				if (this.settings.cacheURLs === true && (urlhash in this.archivedBefore)) {
 					console.log(`Ignoring already matched ${match[1]}.`);
 					continue;
 				}
@@ -239,7 +255,6 @@ export default class ArchiveBoxPlugin extends Plugin {
 					);
 					continue;
 				}
-				this.archivedBefore[urlhash] = true;
 				console.log(`Adding ${match[1]}`);
 				links.push(match[1]);
 			} catch (e) {
@@ -312,8 +327,8 @@ export default class ArchiveBoxPlugin extends Plugin {
 			});
 		}
 
-		this.axios = axios.create(configOptions);
 		this.loggedIn = false;
+		this.axios = axios.create(configOptions);
 	}
 
 	/**
@@ -327,6 +342,9 @@ export default class ArchiveBoxPlugin extends Plugin {
 		username: string,
 		password: string
 	): Promise<void> {
+    if (this.settings.debugMode === true) {
+      console.log("Logging into ArchiveBox...");
+    }
 		try {
 			const loginForm = await this.axios.get("/admin/login");
 			const csrftokenRexp = /^csrftoken=([^;]+);/;
@@ -334,6 +352,9 @@ export default class ArchiveBoxPlugin extends Plugin {
 
 			let nodeCSRFToken: string = "";
 			if (this.isNodeAxios) {
+        if (this.settings.debugMode === true) {
+          console.log("Attempting to retrieve CSRF token from /admin/login");
+        }
 				// retrieve the csrf token cookie
 				if (loginForm.headers["set-cookie"]) {
 					// you can't assume there aren't multiple set-cookie
@@ -343,6 +364,9 @@ export default class ArchiveBoxPlugin extends Plugin {
 						let possibleToken = cookie.match(csrftokenRexp);
 						if (possibleToken && possibleToken.length > 1) {
 							nodeCSRFToken = possibleToken[1];
+              if (this.settings.debugMode === true) {
+                console.log("Got CSRF token! " + nodeCSRFToken.substring(5) + "...");
+              }
 						}
 					});
 				}
@@ -362,6 +386,9 @@ export default class ArchiveBoxPlugin extends Plugin {
 					},
 				};
 			}
+      if (this.settings.debugMode === true) {
+        console.log("Attempting to use CSRF token.");
+      }
 			const response: AxiosResponse = await this.axios.post(
 				"/admin/login/",
 				{
@@ -378,7 +405,11 @@ export default class ArchiveBoxPlugin extends Plugin {
 						const match = cookie.match(sessionidRexp);
 						if (match && match.length > 1) {
 							// TODO capture expiry to retrigger login flow
-							this.nodeAxiosSession = match[1];
+              this.nodeAxiosSession = match[1];
+              if (this.settings.debugMode === true) {
+                console.log("Captured login session.");
+                console.log(this.nodeAxiosSession.substring(4) + "...");
+              }
 							this.loggedIn = true;
 						}
 					});
@@ -402,6 +433,9 @@ export default class ArchiveBoxPlugin extends Plugin {
 				timeout: 2000,
 			};
 			if (this.isNodeAxios) {
+        if (this.settings.debugMode === true) {
+          console.log("Requesting /add/");
+        }
 				config = Object.assign(config, {
 					headers: {
 						// CSRF token isn't checked for add to make bookmarklet work
@@ -415,7 +449,7 @@ export default class ArchiveBoxPlugin extends Plugin {
 					maxRedirects: 0,
 				} as AxiosRequestConfig);
 			}
-			await this.axios.post(
+			let response = await this.axios.post(
 				"/add/",
 				{
 					url: urls.join("\n"),
@@ -425,11 +459,24 @@ export default class ArchiveBoxPlugin extends Plugin {
 				},
 				config
 			);
+      if (this.settings.debugMode === true) {
+        console.log("Submitted. Status code " + response.status);
+        console.log("Successful run, writing URLs to internal cache.");
+      }
+      for (let i = 0; i < urls.length; i++) {
+        let urlhash = await this.SHA256(urls[i]);
+				this.archivedBefore[urlhash] = true;
+      }
 		} catch (error) {
 			if (error) {
 				// check if this is a timeout error. if it is ignore it
 				if (error.code === "ECONNABORTED") return;
+        if (this.settings.debugMode === true) {
+          console.log("Caught error " + error.code);
+        }
 			} else {
+        // in a failure case, if we are caching the URIs these
+        // will falsely be cached. Clear the hashmap.
 				this.updateStatusBar("ArchiveBox submission failed.");
 				console.error(error);
 			}
@@ -627,6 +674,18 @@ class ArchiveBoxSettingTab extends PluginSettingTab {
 					"How often to send detected links to ArchiveBox via auto-submit.",
 				placeholder: "5",
 			},
+      {
+        name: "Cache URIs",
+        settingsKey: "cacheURLs",
+        type: "boolean",
+        description: "Do not re-submit URIs that have already been submitted by this plugin."
+      },
+      {
+        name: "Debug Mode",
+        settingsKey: "debugMode",
+        type: "boolean",
+        description: "Debug mode. Enable only if a developer has asked you for more info."
+      }
 		];
 		const self = this;
 
